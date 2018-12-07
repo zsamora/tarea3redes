@@ -72,9 +72,13 @@ class Router(object):
             if message['destination'] == self.name:
                 self._success(message['data'])
             else:
-                # Randomly choose a port to forward
-                # TODO: Choose the best way according to the route table
-                port = choice(list(self.ports.keys()))
+                # If a port already exists for destination
+                if message['destination'] in self.route_table:
+                    port = self.route_table[message['destination']]
+
+                else:
+                    # Randomly choose a port to forward
+                    port = choice(list(self.ports.keys()))
                 self._log("Forwarding to port {}".format(port))
                 self.ports[port].send_packet(packet)
         else:
