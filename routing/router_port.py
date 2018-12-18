@@ -73,4 +73,3 @@ class RouterPort(Thread):
         while self.running:
             # Manage the output packages
             self._manage_output_packet()
-

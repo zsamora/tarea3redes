@@ -12,8 +12,9 @@ class Router(object):
         self.name = name
         self.update_time = update_time
         self.ports = dict()
-        self.route_table = dict()     # Route table {R#N : port}
-        self.distance_vector = dict() # Distance vector {port : distance}
+        self.route_table = dict()     # Route table {R#N : port out}
+        self.name_port = dict()       # Name port {R#N : port}
+        self.distance_vector = dict() # Distance vector {port in : distance}
         self._init_ports(ports)
         self.timer = None
         self.logging = logging
@@ -53,6 +54,10 @@ class Router(object):
             self.distance_vector[input_port] = 0
             self.distance_vector[output_port] = 1
 
+        for p in self.ports:
+            send_packet(p, json.dumps({'destination': "Broadcast", 'data': {"Name": self.name, "Hello" : 1, "ACK": 0,"Msg" : "Connection request"}}))
+
+
     def _new_packet_received(self, packet):
         """
         Internal method called as callback when a packet is received.
@@ -69,6 +74,12 @@ class Router(object):
             return
 
         if 'destination' in message and 'data' in message:
+            if message['data']["Hello"] == 1:
+                for p in self.ports.key():
+                    if self.route_table != message['data']['r_table']:
+                        for rt in message["data"]["r_table"]:
+                            self.route_table[rt.key()] = rt.value()
+
             if message['destination'] == self.name:
                 self._success(message['data'])
             else:
@@ -90,7 +101,11 @@ class Router(object):
         :return: None
         """
         self._log("Broadcasting")
-        ## TODO: Send route table
+        for p in self.ports:
+            send_packet(p, json.dumps({'destination': "Broadcast", 'data': {"name": self.name, "Hello" : 1,
+                                                                            "port" : self.port, "ACK": 0,
+                                                                            "msg" : "Connection request",
+                                                                            "route_table": self.route_table}}))
         self.timer = Timer(self.update_time, lambda: self._broadcast())
         self.timer.start()
 
