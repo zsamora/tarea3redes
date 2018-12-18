@@ -51,11 +51,12 @@ class Router(object):
             )
 
             self.ports[output_port] = router_port
+            self.route_table[input_port] = self.name
             self.distance_vector[input_port] = 0
             self.distance_vector[output_port] = 1
 
         for p in self.ports:
-            send_packet(p, json.dumps({'destination': "Broadcast", 'data': {"Name": self.name, "Hello" : 1, "ACK": 0,"Msg" : "Connection request"}}))
+            send_packet(p, json.dumps({'destination': "Broadcast", 'data': {"Name": self.name, "Hello" : 1, "ACK": 0,"Msg" : "Hello request"}}))
 
 
     def _new_packet_received(self, packet):
@@ -74,11 +75,16 @@ class Router(object):
             return
 
         if 'destination' in message and 'data' in message:
-            if message['data']["Hello"] == 1:
-                for p in self.ports.key():
-                    if self.route_table != message['data']['r_table']:
-                        for rt in message["data"]["r_table"]:
-                            self.route_table[rt.key()] = rt.value()
+            if message['data']["Hello"]:
+                if self.route_table != message['data']['r_table']:
+                    for rt in message["data"]["r_table"]:
+                        self.route_table[rt] = message["data"]["r_table"][rt]
+                    if !message['data']["ACK"]:
+                    send_packet(p, json.dumps({'destination': message["data"]["port"],
+                                                      'data': {"name": self.name, "Hello" : 1,
+                                                               "port": self.port, "ACK": 1,
+                                                                "msg": "Connection request",
+                                                        "route_table": self.route_table}}))
 
             if message['destination'] == self.name:
                 self._success(message['data'])
@@ -102,10 +108,11 @@ class Router(object):
         """
         self._log("Broadcasting")
         for p in self.ports:
-            send_packet(p, json.dumps({'destination': "Broadcast", 'data': {"name": self.name, "Hello" : 1,
-                                                                            "port" : self.port, "ACK": 0,
-                                                                            "msg" : "Connection request",
-                                                                            "route_table": self.route_table}}))
+            send_packet(p, json.dumps({'destination': "Broadcast",
+                                              'data': {"name": self.name, "Hello" : 0,
+                                                       "port": self.port, "ACK": 0,
+                                                        "msg": "Connection request",
+                                                "route_table": self.route_table}}))
         self.timer = Timer(self.update_time, lambda: self._broadcast())
         self.timer.start()
 
