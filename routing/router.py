@@ -12,12 +12,13 @@ class Router(object):
         self.name = name
         self.update_time = update_time
         self.ports = dict()
-        self.route_table = dict()     # Route table {R#N : port out}
-        self.name_port = dict()       # Name port {R#N : port in}
-        self.distance_vector = dict() # Distance vector {port in : distance}
+        self.route_table = dict()     # Table de ruta {R#N : puerto output}
+        self.distance_vector = dict() # Vector de distancia {puerto input : distance}
+        self.interface = dict()       # Pares {puerto output : puerto input}
         self._init_ports(ports)
         self.timer = None
         self.logging = logging
+        self.default_port = 0 # Puerto default cuando no se encuentra en la tabla de ruta
 
     def _success(self, message):
         """
@@ -60,10 +61,8 @@ class Router(object):
                                                        "port": self.interface[p],
                                                      "Hello" : 1,
                                                        "msg" : "Hello request",
-                                                   "d_vector": self.distance_vector,
-                                                    "r_table": self.route_table},
-                                               'hop': 1
-                                               }))
+                                                   "d_vector": self.distance_vector},
+                                               'hop': 1}))
 
     def _new_packet_received(self, packet):
         """
@@ -81,18 +80,33 @@ class Router(object):
             return
 
         if 'destination' in message and 'data' in message:
-            if message['destination'] == self.name or message['destination'] == "Broadcast":
+            # Mensaje para el router, solo se lee
+            if message['destination'] == self.name:
                 self._success(message['data']['msg'])
-                # Hello == 1 es el inicio de intercambio de vectores de distancia
+            # Mensaje Broadcast
+            elif message['destination'] == "Broadcast":
+                self._success(message['data']['msg'])
+                # Hello == 1 es el inicio de intercambio de vectores de distancia inicial
                 if message['data']["Hello"]:
-                    r_table = message['data']['r_table']
+                    d_vector = message['data']['d_vector'] # Vector de distancia recibido
+                    name = message["data"]["name"]         # Nombre del enviador
+                    port = message["data"]["port"]         # Puerto de salida (Interfaz del enviador)
+                    hop = message["hop"]                   # N° hops del mensaje
+                    # Recorremos los nombres del vector de distancia recibidos
+                    for n in d_vector:
+                        # Si un nombre no se encuentra en nuestro vector de distancia o si es menor el camino
+                        if not(n in self.distance_vector) or (d_vector[n] + hop < self.distance_vector[n]):
+                            self.distance_vector[n] = d_vector[n] + hop     # Agregamos el nombre y su distancia + n° de hop de mensaje
+                            self.route_table[n] = port                      # Agrega el nombre del router no agregado y el puerto del enviador como salida
+                # Broadcast para la actualización
+                else:
                     d_vector = message['data']['d_vector']
                     name = message["data"]["name"] # R#N of the sender
                     port = message["data"]["port"] # Output port for the router receiving
                     hop = message["hop"]
                     # Recorremos los nombres del vector de distancia recibidos
                     for n in d_vector:
-                        # Si un nombre no se encuentra en nuestro vector de distancia o si es menor el camino
+                        # Si un nombre no se encuentra en nuestro vector de distancia o si es menor el camino según RIP (AGREGAR RIP)
                         if not(n in self.distance_vector) or (d_vector[n] + hop < self.distance_vector[n]):
                             self.distance_vector[n] = d_vector[n] + hop     # Agregamos el nombre y su distancia + n° de hop de mensaje
                             self.route_table[n] = port                      # Agrega el nombre del router no agregado y el puerto del enviador como salida
@@ -109,6 +123,14 @@ class Router(object):
         else:
             self._log("Malformed packet")
 
+    # Funcion para actualizar la tabla de ruta a partir de alguna que haya llegado
+    def table_Update(self, new_distanceTable):
+        # Revisamos cada nombre en la tabla
+        for name in self.distance_vector:
+            distancia = self.distance_vector[name]
+            if distancia != new_distanceTable[name]:
+                self.route_distance[name] = min(distancia , ...)
+
     def _broadcast(self):
         """
         Internal method to broadcast
@@ -117,11 +139,12 @@ class Router(object):
         self._log("Broadcasting")
         for p in self.ports:
             send_packet(p, json.dumps({'destination': "Broadcast",
-                                              'data': {"name": self.name, "Hello" : 0,
-                                                       "port": self.port, "ACK": 0,
-                                                        "msg": "Connection request",
-                                                "route_table": self.route_table},
-                                              }))
+                                              'data': {"name": self.name,
+                                                       "port": self.interface[p],
+                                                     "Hello" : 0,
+                                                       "msg" : "Update Broadcast",
+                                                   "d_vector": self.distance_vector},
+                                               'hop': 1}))
         self.timer = Timer(self.update_time, lambda: self._broadcast())
         self.timer.start()
 
