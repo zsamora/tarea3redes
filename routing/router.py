@@ -2,6 +2,7 @@ import json
 from json import JSONDecodeError
 from random import choice
 from threading import Timer
+from send_packet import send_packet
 import math
 
 from routing.router_port import RouterPort
@@ -137,6 +138,7 @@ class Router(object):
         :return: None
         """
         self._log("Broadcasting")
+        self._log(self.distance_vector)
         for p in self.ports:
             send_packet(p, json.dumps({'destination': "Broadcast",
                                               'data': {"name": self.name,
