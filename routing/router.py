@@ -13,7 +13,7 @@ class Router(object):
         self.update_time = update_time
         self.ports = dict()
         self.route_table = dict()     # Route table {R#N : port out}
-        self.name_port = dict()       # Name port {R#N : port}
+        self.name_port = dict()       # Name port {R#N : port in}
         self.distance_vector = dict() # Distance vector {port in : distance}
         self._init_ports(ports)
         self.timer = None
@@ -51,18 +51,19 @@ class Router(object):
             )
 
             self.ports[output_port] = router_port
-            self.route_table[input_port] = self.name
-            self.distance_vector[input_port] = 0
-            #self.distance_vector[output_port] = 1
+            self.interface[output_port] = input_port  # Par puerto in - puerto out
+        self.distance_vector[self.name] = 0           # Agrega el par {self.name, 0}
 
         for p in self.ports:
             send_packet(p, json.dumps({'destination': "Broadcast",
-                                              'data': {"Name": self.name,
+                                              'data': {"name": self.name,
+                                                       "port": self.interface[p],
                                                      "Hello" : 1,
-                                                        "ACK": 0,
-                                                       "Msg" : "Hello request"},
-                                            )}))
-
+                                                       "msg" : "Hello request",
+                                                   "d_vector": self.distance_vector,
+                                                    "r_table": self.route_table},
+                                               'hop': 1
+                                               }))
 
     def _new_packet_received(self, packet):
         """
@@ -80,24 +81,21 @@ class Router(object):
             return
 
         if 'destination' in message and 'data' in message:
-            if message['data']["Hello"]:
-                if self.route_table != message['data']['r_table']:
-                    for rt in message["data"]["r_table"]:
-                        self.route_table[rt] = message["data"]["r_table"][rt]
-                    if !message['data']["ACK"]:
-                        if message["data"]["port"] in self.distance_vector[]:
-                            self.distance_vector[message["data"]["port"]] = 1
-                    send_packet(p, json.dumps({'destination': message["data"]["port"],
-                                                      'data': {"name": self.name, "Hello" : 1,
-                                                               "port": self.port, "ACK": 1,
-                                                                "msg": "Connection request",
-                                                        "route_table": self.route_table}}))
-            elif message["data"]["ACK"]:
-                if self.route_table != message['data']['r_table']:
-                    for rt in message["data"]["r_table"]:
-                        self.route_table[rt] = message["data"]["r_table"][rt]
-            if message['destination'] == self.name:
-                self._success(message['data'])
+            if message['destination'] == self.name or message['destination'] == "Broadcast":
+                self._success(message['data']['msg'])
+                # Hello == 1 es el inicio de intercambio de vectores de distancia
+                if message['data']["Hello"]:
+                    r_table = message['data']['r_table']
+                    d_vector = message['data']['d_vector']
+                    name = message["data"]["name"] # R#N of the sender
+                    port = message["data"]["port"] # Output port for the router receiving
+                    hop = message["hop"]
+                    # Recorremos los nombres del vector de distancia recibidos
+                    for n in d_vector:
+                        # Si un nombre no se encuentra en nuestro vector de distancia o si es menor el camino
+                        if not(n in self.distance_vector) or (d_vector[n] + hop < self.distance_vector[n]):
+                            self.distance_vector[n] = d_vector[n] + hop     # Agregamos el nombre y su distancia + n° de hop de mensaje
+                            self.route_table[n] = port                      # Agrega el nombre del router no agregado y el puerto del enviador como salida
             else:
                 # If a port already exists for destination
                 if message['destination'] in self.route_table:
